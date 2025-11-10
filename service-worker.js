@@ -15,15 +15,15 @@ function getAssets() {
     basePath + '/index.html',
     basePath + '/style.css',
     basePath + '/main.js',
-    basePath + '/media/video2.mp4',
-    basePath + '/media/image2.png',
+    basePath + '/media/video1.mp4',
+    basePath + '/media/image1.png',
     basePath + '/manifest.json',
     basePath + '/version.json'
   ];
 }
 
 // Default cache name (will be updated with version)
-let CACHE_NAME = 'totem-cache-v2';
+let CACHE_NAME = 'totem-cache-v1';
 let CURRENT_VERSION = null;
 
 // Store base path once determined
