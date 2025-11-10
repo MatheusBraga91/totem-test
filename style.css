@@ -1,0 +1,483 @@
+/**
+ * Canadian Sports Totem - Stylesheet
+ * Offline-first kiosk application styles
+ * Designed for fullscreen, touch-friendly interaction
+ */
+
+/* ============================================
+   RESET & BASE STYLES
+   ============================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  background-color: #000000;
+  color: #ffffff;
+}
+
+body {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+#app {
+  width: 100%;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.hidden {
+  display: none !important;
+}
+
+/* ============================================
+   INTRO VIDEO SECTION
+   ============================================ */
+
+#intro-video-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  background-color: #000000;
+}
+
+#intro-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.intro-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 11;
+  padding: 2rem;
+  text-align: center;
+}
+
+.intro-title {
+  font-size: clamp(3rem, 8vw, 6rem);
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.05em;
+}
+
+.intro-subtitle {
+  font-size: clamp(1.5rem, 4vw, 2.5rem);
+  margin-bottom: 3rem;
+  text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
+  opacity: 0.9;
+}
+
+.start-button {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  padding: 1.5rem 4rem;
+  background-color: #ffffff;
+  color: #000000;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 80px;
+  min-width: 250px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.3);
+  touch-action: manipulation;
+}
+
+.start-button:hover,
+.start-button:active {
+  background-color: #e0e0e0;
+  transform: scale(1.05);
+  box-shadow: 0 6px 25px rgba(255, 255, 255, 0.4);
+}
+
+.start-button:focus {
+  outline: 3px solid #ffffff;
+  outline-offset: 4px;
+}
+
+/* ============================================
+   MAIN CONTENT SECTION
+   ============================================ */
+
+#main-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #000000;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.app-header {
+  padding: 2rem 3rem;
+  background-color: rgba(0, 0, 0, 0.9);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  z-index: 5;
+}
+
+#main-title {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+/* ============================================
+   DECADE SELECTOR
+   ============================================ */
+
+.decade-selector {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.5rem;
+}
+
+.decade-button {
+  font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+  padding: 1rem 2rem;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 500;
+  min-height: 60px;
+  min-width: 100px;
+  transition: all 0.3s ease;
+  touch-action: manipulation;
+}
+
+.decade-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+.decade-button.active {
+  background-color: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.3);
+}
+
+.decade-button:active {
+  transform: translateY(0);
+}
+
+.decade-button:focus {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* ============================================
+   CONTENT AREA
+   ============================================ */
+
+.content-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.content-display {
+  width: 100%;
+  max-width: 1400px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.media-container {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 300px;
+}
+
+.content-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.content-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.content-text {
+  padding: 1.5rem 2rem;
+  text-align: center;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+}
+
+.era-title {
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: #ffffff;
+}
+
+.era-description {
+  font-size: clamp(1.1rem, 2.5vw, 1.6rem);
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.9);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/* ============================================
+   NAVIGATION BUTTONS
+   ============================================ */
+
+.navigation {
+  display: flex;
+  justify-content: space-between;
+  padding: 2rem 3rem;
+  background-color: rgba(0, 0, 0, 0.9);
+  border-top: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.nav-button {
+  font-size: clamp(2rem, 5vw, 4rem);
+  width: 120px;
+  height: 120px;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.3s ease;
+  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-button:hover:not(.disabled) {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.1);
+}
+
+.nav-button:active:not(.disabled) {
+  transform: scale(0.95);
+}
+
+.nav-button.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.nav-button:focus {
+  outline: 3px solid #ffffff;
+  outline-offset: 4px;
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+/* Tablet and smaller screens */
+@media (max-width: 1024px) {
+  .app-header {
+    padding: 1.5rem 2rem;
+  }
+  
+  .content-area {
+    padding: 1.5rem;
+  }
+  
+  .content-display {
+    gap: 1.5rem;
+  }
+  
+  .navigation {
+    padding: 1.5rem 2rem;
+  }
+  
+  .nav-button {
+    width: 100px;
+    height: 100px;
+  }
+}
+
+/* Mobile/Portrait orientation */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 1rem;
+  }
+  
+  #main-title {
+    margin-bottom: 1rem;
+  }
+  
+  .decade-selector {
+    gap: 0.5rem;
+  }
+  
+  .decade-button {
+    padding: 0.8rem 1.2rem;
+    min-height: 50px;
+    min-width: 80px;
+  }
+  
+  .content-area {
+    padding: 1rem;
+  }
+  
+  .content-display {
+    gap: 1rem;
+  }
+  
+  .content-text {
+    padding: 1rem;
+  }
+  
+  .navigation {
+    padding: 1rem;
+  }
+  
+  .nav-button {
+    width: 80px;
+    height: 80px;
+    font-size: 2rem;
+  }
+}
+
+/* Landscape mobile */
+@media (max-height: 600px) and (orientation: landscape) {
+  .app-header {
+    padding: 1rem 2rem;
+  }
+  
+  #main-title {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .decade-selector {
+    gap: 0.5rem;
+  }
+  
+  .decade-button {
+    padding: 0.6rem 1rem;
+    min-height: 45px;
+    font-size: 1rem;
+  }
+  
+  .content-area {
+    padding: 1rem;
+  }
+  
+  .content-text {
+    padding: 0.8rem;
+  }
+  
+  .era-title {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .era-description {
+    font-size: 1rem;
+  }
+  
+  .navigation {
+    padding: 1rem 2rem;
+  }
+  
+  .nav-button {
+    width: 70px;
+    height: 70px;
+    font-size: 1.8rem;
+  }
+}
+
+/* ============================================
+   KIOSK MODE ENHANCEMENTS
+   ============================================ */
+
+/* Ensure no scrollbars appear */
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Prevent selection highlight */
+::selection {
+  background: transparent;
+}
+
+/* Smooth transitions */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure fullscreen compatibility */
+:fullscreen,
+:-webkit-full-screen,
+:-moz-full-screen,
+:-ms-fullscreen {
+  width: 100%;
+  height: 100%;
+}
+

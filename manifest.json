@@ -1,0 +1,10 @@
+{
+    "name": "Canadian Sports Totem",
+    "short_name": "SportsTotem",
+    "start_url": "/index.html",
+    "display": "standalone",
+    "background_color": "#000000",
+    "theme_color": "#ffffff",
+    "icons": []
+  }
+  
