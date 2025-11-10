@@ -25,7 +25,7 @@ function getAssets() {
 }
 
 // Default cache name (will be updated with version)
-let CACHE_NAME = 'totem-cache-v7';
+let CACHE_NAME = 'totem-cache-v8';
 let CURRENT_VERSION = null;
 
 // Store base path once determined
