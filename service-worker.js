@@ -25,7 +25,7 @@ function getAssets() {
 }
 
 // Default cache name (will be updated with version)
-let CACHE_NAME = 'totem-cache-v3';
+let CACHE_NAME = 'totem-cache-v4';
 let CURRENT_VERSION = null;
 
 // Store base path once determined
@@ -183,37 +183,48 @@ self.addEventListener('install', event => {
       console.log('Caching assets with cache name:', CACHE_NAME);
       console.log('Assets to cache:', assets);
       
+      // Download all assets with cache busting to ensure fresh files
+      const cacheTimestamp = Date.now();
+      const installVersion = CURRENT_VERSION || 'install';
+      
       try {
+        // Try to cache all at once first
         await cache.addAll(assets);
         console.log('All assets cached successfully');
       } catch (error) {
-        console.warn('Some assets failed to cache, caching individually:', error);
-        // Cache individual assets - continue even if some fail
+        console.warn('Some assets failed to cache, downloading individually with cache busting:', error);
+        
+        // Download each asset individually with cache busting
         const cachePromises = assets.map(async (asset) => {
           try {
-            await cache.add(asset);
-            console.log('Cached:', asset);
-          } catch (err) {
-            // Don't fail the entire installation if one asset fails
-            console.warn('Failed to cache:', asset, err.message);
-            // For media files, try to fetch and cache manually
-            if (asset.match(/\.(mp4|webm|ogg|mp3|wav|avi|mov|png|jpg|jpeg|gif)$/i)) {
-              try {
-                const response = await fetch(asset);
-                if (response && response.ok) {
-                  await cache.put(asset, response.clone());
-                  console.log('Cached media file:', asset);
-                }
-              } catch (fetchErr) {
-                console.warn('Could not cache media file:', asset, fetchErr.message);
+            // Add cache busting to force fresh download
+            const cacheBustUrl = asset + (asset.includes('?') ? '&' : '?') + '_v=' + installVersion + '&_t=' + cacheTimestamp;
+            const response = await fetch(cacheBustUrl, {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache'
               }
+            });
+            
+            if (response && response.ok) {
+              // Store with original URL (without cache busting)
+              await cache.put(asset, response.clone());
+              console.log('✓ Cached:', asset);
+              return { asset, success: true };
+            } else {
+              console.warn('✗ Failed to cache:', asset, 'Status:', response.status);
+              return { asset, success: false };
             }
+          } catch (err) {
+            console.warn('✗ Error caching:', asset, err.message);
+            return { asset, success: false };
           }
         });
         
-        // Wait for all individual cache attempts
-        await Promise.allSettled(cachePromises);
-        console.log('Individual asset caching completed');
+        // Wait for all downloads
+        const results = await Promise.allSettled(cachePromises);
+        const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+        console.log(`Individual caching completed: ${successful}/${assets.length} successful`);
       }
       
       // Force activation of new service worker
@@ -233,14 +244,21 @@ self.addEventListener('activate', event => {
         await initializeCacheName();
       }
       
-      // Delete all caches that don't match current version
+      // Delete ALL caches that don't match current version
+      // This ensures no old files remain
       const cacheNames = await caches.keys();
       const oldCaches = cacheNames.filter(name => 
         name.startsWith('totem-cache-') && name !== CACHE_NAME
       );
       
-      console.log('Deleting old caches:', oldCaches);
-      await Promise.all(oldCaches.map(name => caches.delete(name)));
+      if (oldCaches.length > 0) {
+        console.log('Deleting old caches completely:', oldCaches);
+        await Promise.all(oldCaches.map(name => {
+          console.log('Deleting cache:', name);
+          return caches.delete(name);
+        }));
+        console.log('✓ All old caches deleted');
+      }
       
       // Take control of all clients immediately
       await self.clients.claim();
@@ -382,46 +400,106 @@ self.addEventListener('fetch', event => {
 
 /**
  * Update all cached assets when version changes
- * This is a fallback mechanism - for full SW update, service-worker.js must change
+ * Completely replaces old cache with new version - downloads ALL files fresh
  */
 async function updateCacheForNewVersion(newVersion) {
   try {
     const newCacheName = 'totem-cache-' + newVersion;
-    const newCache = await caches.open(newCacheName);
+    const oldCacheName = CACHE_NAME;
     
-    console.log('Updating cache for new version:', newVersion);
+    console.log('Starting complete cache replacement for version:', newVersion);
+    console.log('Old cache:', oldCacheName, '-> New cache:', newCacheName);
     
     // Get assets with correct base path
     const assets = getAssets();
     
-    // Cache all assets with new version
-    for (const asset of assets) {
+    // Create new cache
+    const newCache = await caches.open(newCacheName);
+    
+    // Download ALL assets fresh with cache busting to ensure we get new files
+    const cacheTimestamp = Date.now();
+    const downloadPromises = assets.map(async (asset) => {
       try {
-        const response = await fetch(asset);
+        // Add cache busting parameter to force fresh download
+        const cacheBustUrl = asset + (asset.includes('?') ? '&' : '?') + '_v=' + newVersion + '&_t=' + cacheTimestamp;
+        const response = await fetch(cacheBustUrl, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
+        
         if (response && response.ok) {
+          // Store with original asset URL (without cache busting params)
           await newCache.put(asset, response.clone());
+          console.log('✓ Downloaded and cached:', asset);
+          return { asset, success: true };
+        } else {
+          console.warn('✗ Failed to download:', asset, 'Status:', response.status);
+          return { asset, success: false };
         }
       } catch (err) {
-        console.warn('Failed to update asset:', asset, err);
+        console.warn('✗ Error downloading:', asset, err.message);
+        return { asset, success: false };
       }
+    });
+    
+    // Wait for all downloads to complete
+    const results = await Promise.allSettled(downloadPromises);
+    const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const failed = results.length - successful;
+    
+    console.log(`Download complete: ${successful} successful, ${failed} failed`);
+    
+    // Only proceed if we got the essential files (at least index.html and main files)
+    const essentialFiles = ['index.html', 'main.js', 'style.css', 'version.json'];
+    const hasEssential = essentialFiles.some(file => {
+      const asset = assets.find(a => a.includes(file));
+      return results.some(r => r.status === 'fulfilled' && r.value.asset === asset && r.value.success);
+    });
+    
+    if (!hasEssential) {
+      console.error('Failed to download essential files, aborting cache update');
+      await caches.delete(newCacheName);
+      return;
     }
     
-    // Update CACHE_NAME and delete old caches
-    const oldCacheName = CACHE_NAME;
+    // Now that new cache is complete, update CACHE_NAME and delete ALL old caches
     CACHE_NAME = newCacheName;
     CURRENT_VERSION = newVersion;
     
-    // Delete old cache
-    await caches.delete(oldCacheName);
-    console.log('Cache updated successfully to version:', newVersion);
+    // Delete the old cache and any other old caches
+    const allCacheNames = await caches.keys();
+    const oldCaches = allCacheNames.filter(name => 
+      name.startsWith('totem-cache-') && name !== newCacheName
+    );
     
-    // Notify clients
+    console.log('Deleting old caches:', oldCaches);
+    await Promise.all(oldCaches.map(name => caches.delete(name)));
+    
+    console.log('✓ Cache replacement complete! New version:', newVersion);
+    console.log('✓ All old caches deleted');
+    
+    // Notify clients that cache update is complete
     const clients = await self.clients.matchAll();
     clients.forEach(client => {
-      client.postMessage({ type: 'CACHE_UPDATED', version: newVersion });
+      client.postMessage({ 
+        type: 'CACHE_UPDATED', 
+        version: newVersion,
+        success: true
+      });
     });
   } catch (error) {
     console.error('Error updating cache for new version:', error);
+    
+    // Notify clients of failure
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => {
+      client.postMessage({ 
+        type: 'CACHE_UPDATE_FAILED', 
+        error: error.message
+      });
+    });
   }
 }
 
