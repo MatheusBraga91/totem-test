@@ -187,6 +187,45 @@ self.addEventListener('fetch', event => {
   // Skip chrome-extension and other non-http requests
   if (!event.request.url.startsWith('http')) return;
   
+  // Special handling for version.json - always fetch fresh from network
+  const url = new URL(event.request.url);
+  if (url.pathname === '/version.json' || url.pathname.endsWith('/version.json')) {
+    event.respondWith(
+      (async () => {
+        try {
+          // Always fetch fresh from network (bypass cache)
+          const networkResponse = await fetch(event.request, { 
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache'
+            }
+          });
+          
+          if (networkResponse && networkResponse.ok) {
+            // Update cache with fresh version
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(event.request, networkResponse.clone());
+          }
+          
+          return networkResponse;
+        } catch (error) {
+          // If network fails, try cache as fallback
+          const cachedResponse = await caches.match(event.request);
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          // If no cache, return error
+          return new Response('Offline', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: new Headers({ 'Content-Type': 'text/plain' })
+          });
+        }
+      })()
+    );
+    return;
+  }
+  
   event.respondWith(
     (async () => {
       // Always try cache first for offline support
@@ -294,5 +333,18 @@ self.addEventListener('message', event => {
         }
       }
     });
+  } else if (event.data && event.data.type === 'UPDATE_VERSION') {
+    // Client detected version change, update cache immediately
+    const newVersion = event.data.version;
+    if (newVersion) {
+      console.log('Updating cache for new version from client:', newVersion);
+      updateCacheForNewVersion(newVersion).then(() => {
+        // Notify client that cache is updated
+        event.ports && event.ports[0] && event.ports[0].postMessage({ 
+          type: 'CACHE_UPDATE_COMPLETE',
+          version: newVersion 
+        });
+      });
+    }
   }
 });

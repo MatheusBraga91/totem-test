@@ -277,6 +277,132 @@ function updateNavigationButtons() {
   }
 }
 
+// Version checking state
+let currentVersion = null;
+let versionCheckInterval = null;
+let refreshing = false;
+
+/**
+ * Fetch and compare version.json with cached version
+ * @returns {Promise<boolean>} True if new version detected
+ */
+async function checkVersionUpdate() {
+  try {
+    // Fetch version.json with cache busting
+    const response = await fetch('/version.json?t=' + Date.now(), { 
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    });
+    
+    if (!response.ok) {
+      console.warn('Failed to fetch version.json:', response.status);
+      return false;
+    }
+    
+    const data = await response.json();
+    const onlineVersion = data.version;
+    
+    if (!onlineVersion) {
+      console.warn('No version in version.json');
+      return false;
+    }
+    
+    // Get cached version from localStorage or default
+    const cachedVersion = localStorage.getItem('app_version') || currentVersion;
+    
+    console.log('Version check - Online:', onlineVersion, 'Cached:', cachedVersion);
+    
+    // If versions differ, update is available
+    if (cachedVersion && cachedVersion !== onlineVersion) {
+      console.log('New version detected! Updating from', cachedVersion, 'to', onlineVersion);
+      
+      // Update stored version
+      localStorage.setItem('app_version', onlineVersion);
+      currentVersion = onlineVersion;
+      
+      // Trigger service worker to update cache
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ 
+          type: 'UPDATE_VERSION', 
+          version: onlineVersion 
+        });
+      }
+      
+      return true;
+    } else if (!cachedVersion) {
+      // First time, store the version
+      localStorage.setItem('app_version', onlineVersion);
+      currentVersion = onlineVersion;
+    }
+    
+    return false;
+  } catch (error) {
+    // Silently fail when offline - this is expected
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      // Network error, offline - this is normal
+      return false;
+    }
+    console.warn('Error checking version:', error);
+    return false;
+  }
+}
+
+/**
+ * Setup periodic version checking
+ */
+function setupVersionChecking() {
+  // Check immediately if online
+  if (navigator.onLine) {
+    setTimeout(() => {
+      checkVersionUpdate().then(hasUpdate => {
+        if (hasUpdate) {
+          triggerReload();
+        }
+      });
+    }, 3000); // Wait 3 seconds after page load
+  }
+  
+  // Check every 1 minute when online (more frequent for better responsiveness)
+  versionCheckInterval = setInterval(() => {
+    if (navigator.onLine) {
+      checkVersionUpdate().then(hasUpdate => {
+        if (hasUpdate) {
+          triggerReload();
+        }
+      });
+    }
+  }, 60 * 1000); // Check every 1 minute
+  
+  // Check immediately when coming back online
+  window.addEventListener('online', () => {
+    console.log('Connection restored, checking for version update...');
+    setTimeout(() => {
+      checkVersionUpdate().then(hasUpdate => {
+        if (hasUpdate) {
+          triggerReload();
+        }
+      });
+    }, 1000); // Small delay to ensure connection is stable
+  });
+}
+
+/**
+ * Trigger page reload for update
+ */
+function triggerReload() {
+  if (refreshing) return;
+  
+  console.log('Triggering page reload for update...');
+  refreshing = true;
+  
+  // Small delay to ensure any cache updates are complete
+  setTimeout(() => {
+    window.location.reload();
+  }, 500);
+}
+
 /**
  * Setup service worker registration and update detection
  * Automatically refreshes the page when a new service worker is installed
@@ -287,7 +413,6 @@ function setupServiceWorkerHandlers() {
     return;
   }
   
-  let refreshing = false;
   let registration = null;
   
   // Register service worker
@@ -296,7 +421,7 @@ function setupServiceWorkerHandlers() {
       registration = reg;
       console.log('Service Worker registered:', reg.scope);
       
-      // Check for updates immediately
+      // Check for service worker file updates
       checkForServiceWorkerUpdate(reg);
       
       // Listen for updates
@@ -312,10 +437,7 @@ function setupServiceWorkerHandlers() {
             // If there's already a controller (active service worker), reload
             if (navigator.serviceWorker.controller) {
               console.log('New service worker installed, reloading page...');
-              if (!refreshing) {
-                refreshing = true;
-                window.location.reload();
-              }
+              triggerReload();
             } else {
               console.log('Service worker installed for the first time');
             }
@@ -325,8 +447,7 @@ function setupServiceWorkerHandlers() {
           if (newWorker.state === 'activated') {
             if (navigator.serviceWorker.controller && !refreshing) {
               console.log('New service worker activated, reloading page...');
-              refreshing = true;
-              window.location.reload();
+              triggerReload();
             }
           }
         });
@@ -334,10 +455,10 @@ function setupServiceWorkerHandlers() {
       
       // Listen for controller change (backup mechanism)
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing) return;
-        console.log('Service worker controller changed, reloading page...');
-        refreshing = true;
-        window.location.reload();
+        if (!refreshing) {
+          console.log('Service worker controller changed, reloading page...');
+          triggerReload();
+        }
       });
     })
     .catch(err => {
@@ -348,53 +469,15 @@ function setupServiceWorkerHandlers() {
   navigator.serviceWorker.addEventListener('message', event => {
     if (event.data && event.data.type === 'UPDATE_AVAILABLE') {
       console.log('Update available, version:', event.data.version);
-      // Service worker will handle cache update, we just need to reload
-      if (!refreshing) {
-        refreshing = true;
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000); // Small delay to ensure cache is updated
-      }
+      triggerReload();
     } else if (event.data && event.data.type === 'CACHE_UPDATED') {
       console.log('Cache updated to version:', event.data.version);
-      // Reload to use new cached assets
-      if (!refreshing) {
-        refreshing = true;
-        window.location.reload();
-      }
+      triggerReload();
     }
   });
   
-  // Periodically check for updates when online
-  setInterval(() => {
-    if (navigator.onLine && registration && registration.active) {
-      // Check for service worker file update
-      checkForServiceWorkerUpdate(registration);
-      
-      // Also check version.json via service worker message
-      registration.active.postMessage({ type: 'CHECK_VERSION' });
-    }
-  }, 5 * 60 * 1000); // Check every 5 minutes
-  
-  // Also check when coming back online
-  window.addEventListener('online', () => {
-    console.log('Connection restored, checking for updates...');
-    if (registration) {
-      checkForServiceWorkerUpdate(registration);
-      if (registration.active) {
-        registration.active.postMessage({ type: 'CHECK_VERSION' });
-      }
-    }
-  });
-  
-  // Check version immediately on load if online (after registration is ready)
-  if (navigator.onLine) {
-    setTimeout(() => {
-      if (registration && registration.active) {
-        registration.active.postMessage({ type: 'CHECK_VERSION' });
-      }
-    }, 2000); // Wait 2 seconds after page load
-  }
+  // Setup version checking
+  setupVersionChecking();
 }
 
 /**
