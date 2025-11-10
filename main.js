@@ -288,8 +288,10 @@ let refreshing = false;
  */
 async function checkVersionUpdate() {
   try {
-    // Fetch version.json with cache busting
-    const response = await fetch('/version.json?t=' + Date.now(), { 
+    // Fetch version.json with cache busting (use relative path for GitHub Pages subdirectory)
+    const basePath = window.location.pathname.replace(/\/[^/]*$/, '') || '';
+    const versionUrl = basePath + '/version.json?t=' + Date.now();
+    const response = await fetch(versionUrl, { 
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache'
@@ -415,8 +417,12 @@ function setupServiceWorkerHandlers() {
   
   let registration = null;
   
-  // Register service worker
-  navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+  // Register service worker (use relative path for GitHub Pages subdirectory)
+  const basePath = window.location.pathname.replace(/\/[^/]*$/, '') || '';
+  const swPath = basePath + '/service-worker.js';
+  const swScope = basePath + '/';
+  
+  navigator.serviceWorker.register(swPath, { scope: swScope })
     .then(reg => {
       registration = reg;
       console.log('Service Worker registered:', reg.scope);

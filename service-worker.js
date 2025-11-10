@@ -6,21 +6,61 @@
  * Current version: 20241201120000
  */
 
-// Assets to cache (version.json will be fetched dynamically)
-const ASSETS = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/main.js',
-  '/media/video1.mp4',
-  '/media/image1.png',
-  '/manifest.json',
-  '/version.json'
-];
+/**
+ * Get assets list with correct base path
+ * @returns {Array<string>} Array of asset URLs
+ */
+function getAssets() {
+  const basePath = getBasePath();
+  return [
+    basePath + '/',
+    basePath + '/index.html',
+    basePath + '/style.css',
+    basePath + '/main.js',
+    basePath + '/media/video1.mp4',
+    basePath + '/media/image1.png',
+    basePath + '/manifest.json',
+    basePath + '/version.json'
+  ];
+}
 
 // Default cache name (will be updated with version)
 let CACHE_NAME = 'totem-cache-v3';
 let CURRENT_VERSION = null;
+
+// Store base path once determined
+let BASE_PATH = null;
+
+/**
+ * Get the base path from the service worker scope
+ * @returns {string} Base path (e.g., '/totem-test' or '')
+ */
+function getBasePath() {
+  if (BASE_PATH !== null) {
+    return BASE_PATH;
+  }
+  
+  try {
+    // Try to get from registration scope first
+    if (self.registration && self.registration.scope) {
+      const scopeUrl = new URL(self.registration.scope);
+      BASE_PATH = scopeUrl.pathname.replace(/\/$/, '') || '';
+      return BASE_PATH;
+    }
+    
+    // Fallback: use service worker script location
+    if (self.location && self.location.pathname) {
+      // Remove the service-worker.js filename
+      BASE_PATH = self.location.pathname.replace(/\/[^/]*$/, '').replace(/\/$/, '') || '';
+      return BASE_PATH;
+    }
+    
+    return '';
+  } catch (error) {
+    console.warn('Error determining base path:', error);
+    return '';
+  }
+}
 
 /**
  * Fetch version.json and extract version number
@@ -28,7 +68,9 @@ let CURRENT_VERSION = null;
  */
 async function fetchVersion() {
   try {
-    const response = await fetch('/version.json?t=' + Date.now(), { cache: 'no-store' });
+    const basePath = getBasePath();
+    const versionUrl = basePath + '/version.json?t=' + Date.now();
+    const response = await fetch(versionUrl, { cache: 'no-store' });
     if (!response.ok) throw new Error('Failed to fetch version');
     const data = await response.json();
     return data.version || null;
@@ -124,20 +166,30 @@ self.addEventListener('install', event => {
   
   event.waitUntil(
     (async () => {
+      // Initialize base path from service worker location
+      if (BASE_PATH === null && self.location && self.location.pathname) {
+        BASE_PATH = self.location.pathname.replace(/\/[^/]*$/, '').replace(/\/$/, '') || '';
+        console.log('Base path determined:', BASE_PATH);
+      }
+      
       // Initialize cache name based on version
       await initializeCacheName();
+      
+      // Get assets with correct base path
+      const assets = getAssets();
       
       // Open cache and add all assets
       const cache = await caches.open(CACHE_NAME);
       console.log('Caching assets with cache name:', CACHE_NAME);
+      console.log('Assets to cache:', assets);
       
       try {
-        await cache.addAll(ASSETS);
+        await cache.addAll(assets);
         console.log('All assets cached successfully');
       } catch (error) {
         console.error('Error caching assets:', error);
         // Cache individual assets if addAll fails
-        for (const asset of ASSETS) {
+        for (const asset of assets) {
           try {
             await cache.add(asset);
           } catch (err) {
@@ -189,7 +241,8 @@ self.addEventListener('fetch', event => {
   
   // Special handling for version.json - always fetch fresh from network
   const url = new URL(event.request.url);
-  if (url.pathname === '/version.json' || url.pathname.endsWith('/version.json')) {
+  const basePath = getBasePath();
+  if (url.pathname === basePath + '/version.json' || url.pathname.endsWith('/version.json')) {
     event.respondWith(
       (async () => {
         try {
@@ -281,8 +334,11 @@ async function updateCacheForNewVersion(newVersion) {
     
     console.log('Updating cache for new version:', newVersion);
     
+    // Get assets with correct base path
+    const assets = getAssets();
+    
     // Cache all assets with new version
-    for (const asset of ASSETS) {
+    for (const asset of assets) {
       try {
         const response = await fetch(asset);
         if (response && response.ok) {
