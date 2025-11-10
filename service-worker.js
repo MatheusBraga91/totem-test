@@ -25,7 +25,7 @@ function getAssets() {
 }
 
 // Default cache name (will be updated with version)
-let CACHE_NAME = 'totem-cache-v1';
+let CACHE_NAME = 'totem-cache-v2';
 let CURRENT_VERSION = null;
 
 // Store base path once determined
@@ -187,15 +187,33 @@ self.addEventListener('install', event => {
         await cache.addAll(assets);
         console.log('All assets cached successfully');
       } catch (error) {
-        console.error('Error caching assets:', error);
-        // Cache individual assets if addAll fails
-        for (const asset of assets) {
+        console.warn('Some assets failed to cache, caching individually:', error);
+        // Cache individual assets - continue even if some fail
+        const cachePromises = assets.map(async (asset) => {
           try {
             await cache.add(asset);
+            console.log('Cached:', asset);
           } catch (err) {
-            console.warn('Failed to cache:', asset, err);
+            // Don't fail the entire installation if one asset fails
+            console.warn('Failed to cache:', asset, err.message);
+            // For media files, try to fetch and cache manually
+            if (asset.match(/\.(mp4|webm|ogg|mp3|wav|avi|mov|png|jpg|jpeg|gif)$/i)) {
+              try {
+                const response = await fetch(asset);
+                if (response && response.ok) {
+                  await cache.put(asset, response.clone());
+                  console.log('Cached media file:', asset);
+                }
+              } catch (fetchErr) {
+                console.warn('Could not cache media file:', asset, fetchErr.message);
+              }
+            }
           }
-        }
+        });
+        
+        // Wait for all individual cache attempts
+        await Promise.allSettled(cachePromises);
+        console.log('Individual asset caching completed');
       }
       
       // Force activation of new service worker
@@ -239,8 +257,15 @@ self.addEventListener('fetch', event => {
   // Skip chrome-extension and other non-http requests
   if (!event.request.url.startsWith('http')) return;
   
-  // Special handling for version.json - always fetch fresh from network
   const url = new URL(event.request.url);
+  
+  // Ignore favicon requests (browser automatically requests it)
+  if (url.pathname.endsWith('/favicon.ico') || url.pathname === '/favicon.ico') {
+    event.respondWith(new Response('', { status: 204 })); // No Content
+    return;
+  }
+  
+  // Special handling for version.json - always fetch fresh from network
   const basePath = getBasePath();
   if (url.pathname === basePath + '/version.json' || url.pathname.endsWith('/version.json')) {
     event.respondWith(
@@ -281,41 +306,73 @@ self.addEventListener('fetch', event => {
   
   event.respondWith(
     (async () => {
-      // Always try cache first for offline support
-      const cachedResponse = await caches.match(event.request);
-      
-      // If we have a cached response, serve it immediately
-      if (cachedResponse) {
-        // In background, try to update cache (fetch will fail if offline)
-        fetch(event.request)
-          .then(response => {
-            if (response && response.ok) {
-              caches.open(CACHE_NAME).then(cache => {
-                cache.put(event.request, response.clone());
-              });
-            }
-          })
-          .catch(() => {
-            // Network error, keep using cache (offline or network failure)
-          });
-        return cachedResponse;
-      }
-      
-      // Not in cache, try network
       try {
-        const networkResponse = await fetch(event.request);
-        if (networkResponse && networkResponse.ok) {
-          // Cache the response for future use
-          const cache = await caches.open(CACHE_NAME);
-          cache.put(event.request, networkResponse.clone());
+        // Always try cache first for offline support
+        const cachedResponse = await caches.match(event.request);
+        
+        // If we have a cached response, serve it immediately
+        if (cachedResponse) {
+          // In background, try to update cache (fetch will fail if offline)
+          fetch(event.request)
+            .then(response => {
+              if (response && response.ok) {
+                caches.open(CACHE_NAME).then(cache => {
+                  cache.put(event.request, response.clone());
+                }).catch(err => {
+                  console.warn('Failed to update cache:', err);
+                });
+              }
+            })
+            .catch(() => {
+              // Network error, keep using cache (offline or network failure)
+            });
+          return cachedResponse;
         }
-        return networkResponse;
+        
+        // Not in cache, try network
+        try {
+          const networkResponse = await fetch(event.request);
+          if (networkResponse && networkResponse.ok) {
+            // Cache the response for future use (but don't fail if caching fails)
+            try {
+              const cache = await caches.open(CACHE_NAME);
+              await cache.put(event.request, networkResponse.clone());
+            } catch (cacheError) {
+              console.warn('Failed to cache response:', event.request.url, cacheError);
+              // Continue even if caching fails
+            }
+          }
+          return networkResponse;
+        } catch (fetchError) {
+          // Network failed, return offline response
+          console.warn('Network request failed:', event.request.url, fetchError.message);
+          
+          // For media files, return a more graceful error
+          if (event.request.url.match(/\.(mp4|webm|ogg|mp3|wav|avi|mov)$/i)) {
+            return new Response('', {
+              status: 404,
+              statusText: 'Not Found'
+            });
+          }
+          
+          return new Response('Offline', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: new Headers({ 'Content-Type': 'text/plain' })
+          });
+        }
       } catch (error) {
-        // Network failed, return offline response
-        console.warn('Network request failed:', event.request.url);
-        return new Response('Offline', {
-          status: 503,
-          statusText: 'Service Unavailable',
+        // Catch any unexpected errors to prevent service worker from breaking
+        console.error('Unexpected error in fetch handler:', error);
+        // Try to return cached version as last resort
+        const fallbackCache = await caches.match(event.request);
+        if (fallbackCache) {
+          return fallbackCache;
+        }
+        // Return error response
+        return new Response('Error', {
+          status: 500,
+          statusText: 'Internal Server Error',
           headers: new Headers({ 'Content-Type': 'text/plain' })
         });
       }
