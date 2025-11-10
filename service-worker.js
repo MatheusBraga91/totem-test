@@ -19,7 +19,7 @@ const ASSETS = [
 ];
 
 // Default cache name (will be updated with version)
-let CACHE_NAME = 'totem-cache-v1';
+let CACHE_NAME = 'totem-cache-v2';
 let CURRENT_VERSION = null;
 
 /**
