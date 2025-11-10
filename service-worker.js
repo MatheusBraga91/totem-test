@@ -2,8 +2,6 @@
  * Service Worker for Totem Kiosk App
  * Implements version-based cache system for automatic updates
  * 
- * IMPORTANT: When updating version.json, also update this comment to trigger new SW installation
- * Current version: 20241201120000
  */
 
 /**
@@ -17,15 +15,15 @@ function getAssets() {
     basePath + '/index.html',
     basePath + '/style.css',
     basePath + '/main.js',
-    basePath + '/media/video2.mp4',
-    basePath + '/media/image2.png',
+    basePath + '/media/video1.mp4',
+    basePath + '/media/image1.png',
     basePath + '/manifest.json',
     basePath + '/version.json'
   ];
 }
 
 // Default cache name (will be updated with version)
-let CACHE_NAME = 'totem-cache-v9';
+let CACHE_NAME = 'totem-cache-v2';
 let CURRENT_VERSION = null;
 
 // Store base path once determined
