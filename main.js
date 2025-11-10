@@ -278,22 +278,139 @@ function updateNavigationButtons() {
 }
 
 /**
- * Setup service worker controller change handler
- * Automatically refreshes the page when a new service worker takes control (after update)
+ * Setup service worker registration and update detection
+ * Automatically refreshes the page when a new service worker is installed
  */
 function setupServiceWorkerHandlers() {
-  if ('serviceWorker' in navigator) {
-    let refreshing = false;
-    
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      
-      // Reload the page to get the updated assets
-      console.log('Service worker updated, refreshing page...');
-      window.location.reload();
-    });
+  if (!('serviceWorker' in navigator)) {
+    console.warn('Service Workers not supported');
+    return;
   }
+  
+  let refreshing = false;
+  let registration = null;
+  
+  // Register service worker
+  navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+    .then(reg => {
+      registration = reg;
+      console.log('Service Worker registered:', reg.scope);
+      
+      // Check for updates immediately
+      checkForServiceWorkerUpdate(reg);
+      
+      // Listen for updates
+      reg.addEventListener('updatefound', () => {
+        console.log('New service worker found, installing...');
+        const newWorker = reg.installing;
+        
+        if (!newWorker) return;
+        
+        newWorker.addEventListener('statechange', () => {
+          // When new worker reaches 'installed' state
+          if (newWorker.state === 'installed') {
+            // If there's already a controller (active service worker), reload
+            if (navigator.serviceWorker.controller) {
+              console.log('New service worker installed, reloading page...');
+              if (!refreshing) {
+                refreshing = true;
+                window.location.reload();
+              }
+            } else {
+              console.log('Service worker installed for the first time');
+            }
+          }
+          
+          // When new worker becomes 'activated', reload if not already refreshing
+          if (newWorker.state === 'activated') {
+            if (navigator.serviceWorker.controller && !refreshing) {
+              console.log('New service worker activated, reloading page...');
+              refreshing = true;
+              window.location.reload();
+            }
+          }
+        });
+      });
+      
+      // Listen for controller change (backup mechanism)
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        console.log('Service worker controller changed, reloading page...');
+        refreshing = true;
+        window.location.reload();
+      });
+    })
+    .catch(err => {
+      console.error('Service Worker registration failed:', err);
+    });
+  
+  // Listen for messages from service worker
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data && event.data.type === 'UPDATE_AVAILABLE') {
+      console.log('Update available, version:', event.data.version);
+      // Service worker will handle cache update, we just need to reload
+      if (!refreshing) {
+        refreshing = true;
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000); // Small delay to ensure cache is updated
+      }
+    } else if (event.data && event.data.type === 'CACHE_UPDATED') {
+      console.log('Cache updated to version:', event.data.version);
+      // Reload to use new cached assets
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    }
+  });
+  
+  // Periodically check for updates when online
+  setInterval(() => {
+    if (navigator.onLine && registration && registration.active) {
+      // Check for service worker file update
+      checkForServiceWorkerUpdate(registration);
+      
+      // Also check version.json via service worker message
+      registration.active.postMessage({ type: 'CHECK_VERSION' });
+    }
+  }, 5 * 60 * 1000); // Check every 5 minutes
+  
+  // Also check when coming back online
+  window.addEventListener('online', () => {
+    console.log('Connection restored, checking for updates...');
+    if (registration) {
+      checkForServiceWorkerUpdate(registration);
+      if (registration.active) {
+        registration.active.postMessage({ type: 'CHECK_VERSION' });
+      }
+    }
+  });
+  
+  // Check version immediately on load if online (after registration is ready)
+  if (navigator.onLine) {
+    setTimeout(() => {
+      if (registration && registration.active) {
+        registration.active.postMessage({ type: 'CHECK_VERSION' });
+      }
+    }, 2000); // Wait 2 seconds after page load
+  }
+}
+
+/**
+ * Check for service worker update
+ * @param {ServiceWorkerRegistration} registration - The service worker registration
+ */
+function checkForServiceWorkerUpdate(registration) {
+  if (!registration) return;
+  
+  registration.update()
+    .then(() => {
+      console.log('Service worker update check completed');
+    })
+    .catch(err => {
+      console.warn('Service worker update check failed:', err);
+    });
 }
 
 /**
